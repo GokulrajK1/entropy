@@ -1,0 +1,6 @@
+[
+  "entropy_threshold",
+  "entropy_csv_files",
+  "utility_function",
+  "number_of_passages_retrieved_per_query"
+]

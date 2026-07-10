@@ -1,0 +1,6 @@
+[
+  "number_of_queries",
+  "number_of_passages_retrieved_per_query",
+  "random_seed",
+  "query_ids"
+]

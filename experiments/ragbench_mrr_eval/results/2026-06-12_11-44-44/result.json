@@ -1,0 +1,47 @@
+{
+  "parameters": {
+    "alphas": null,
+    "utility_function": "U2",
+    "alpha": null,
+    "alpha_values": "0.0,0.2",
+    "number_of_queries": 500,
+    "number_of_passages_retrieved_per_query": 10,
+    "query_ids": null
+  },
+  "results": {
+    "alpha": [
+      0.0,
+      0.2
+    ],
+    "mean_mrr": [
+      0.9602769841269841,
+      0.9399880952380952
+    ],
+    "std_mrr": [
+      0.15790158323871237,
+      0.19063268087941893
+    ],
+    "median_mrr": [
+      1.0,
+      1.0
+    ],
+    "min_mrr": [
+      0.0,
+      0.0
+    ],
+    "max_mrr": [
+      1.0,
+      1.0
+    ],
+    "queries_with_relevant": [
+      500,
+      500
+    ],
+    "queries_evaluated": [
+      500,
+      500
+    ],
+    "results_csv": "/Users/gokulrajkumarassamy/Programming/Research/entropy/experiments/ragbench_mrr_eval/results/2026-06-12_11-44-44/mrr_results.csv",
+    "plot_file": "/Users/gokulrajkumarassamy/Programming/Research/entropy/experiments/ragbench_mrr_eval/results/2026-06-12_11-44-44/mrr_vs_alpha.png"
+  }
+}

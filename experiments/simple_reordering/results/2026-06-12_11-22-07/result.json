@@ -1,0 +1,36 @@
+{
+  "parameters": {
+    "number_of_queries": 1,
+    "number_of_passages_retrieved_per_query": 3,
+    "query_ids": null
+  },
+  "results": {
+    "alphas": [
+      0.0,
+      0.1,
+      0.2,
+      0.3,
+      0.4,
+      0.5,
+      0.6,
+      0.7,
+      0.8,
+      0.9,
+      1.0
+    ],
+    "alpha_to_number_reordered": {
+      "0.0": 1,
+      "0.1": 1,
+      "0.2": 1,
+      "0.3": 1,
+      "0.4": 1,
+      "0.5": 1,
+      "0.6": 1,
+      "0.7": 1,
+      "0.8": 1,
+      "0.9": 1,
+      "1.0": 0
+    },
+    "plot_file": "/Users/gokulrajkumarassamy/Programming/Research/entropy/experiments/simple_reordering/results/2026-06-12_11-22-07/reorder_vs_alpha_test_all.png"
+  }
+}

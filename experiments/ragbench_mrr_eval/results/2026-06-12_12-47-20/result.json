@@ -1,0 +1,105 @@
+{
+  "parameters": {
+    "alphas": null,
+    "utility_function": "U3",
+    "alpha": null,
+    "alpha_values": "0.0,0.5,1.0,1.5,2.0,3.0",
+    "number_of_queries": null,
+    "number_of_passages_retrieved_per_query": 10,
+    "query_ids": [
+      "test366",
+      "test17",
+      "test374",
+      "test256",
+      "test260",
+      "test274",
+      "test126",
+      "test484",
+      "test332",
+      "test124",
+      "test128",
+      "test185",
+      "test215",
+      "test188",
+      "test79",
+      "test305",
+      "test475",
+      "test196",
+      "test375",
+      "test40",
+      "test314",
+      "test4",
+      "test288",
+      "test423",
+      "test25"
+    ]
+  },
+  "results": {
+    "alpha": [
+      0.0,
+      0.5,
+      1.0,
+      1.5,
+      2.0,
+      3.0
+    ],
+    "mean_mrr": [
+      0.9333333333333332,
+      0.9333333333333332,
+      0.9266666666666667,
+      0.9266666666666667,
+      0.9233333333333333,
+      0.8813333333333333
+    ],
+    "std_mrr": [
+      0.18257418583505536,
+      0.18257418583505536,
+      0.20044395171163878,
+      0.20044395171163878,
+      0.21071307505705478,
+      0.2435077000835908
+    ],
+    "median_mrr": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "min_mrr": [
+      0.3333333333333333,
+      0.3333333333333333,
+      0.3333333333333333,
+      0.3333333333333333,
+      0.25,
+      0.2
+    ],
+    "max_mrr": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "queries_with_relevant": [
+      25,
+      25,
+      25,
+      25,
+      25,
+      25
+    ],
+    "queries_evaluated": [
+      25,
+      25,
+      25,
+      25,
+      25,
+      25
+    ],
+    "results_csv": "/Users/gokulrajkumarassamy/Programming/Research/entropy/experiments/ragbench_mrr_eval/results/2026-06-12_12-47-20/mrr_results.csv",
+    "plot_file": "/Users/gokulrajkumarassamy/Programming/Research/entropy/experiments/ragbench_mrr_eval/results/2026-06-12_12-47-20/mrr_vs_alpha.png"
+  }
+}

@@ -1,0 +1,3 @@
+alpha,mean_mrr,std_mrr,median_mrr,min_mrr,max_mrr,queries_with_relevant,queries_evaluated
+0.00,0.933333,0.182574,1.000000,0.333333,1.000000,25,25
+0.20,0.926667,0.200444,1.000000,0.333333,1.000000,25,25
