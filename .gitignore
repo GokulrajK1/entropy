@@ -7,3 +7,5 @@ __pycache__/
 *.pkl
 *.log
 .claude/scheduled_tasks.lock
+slurm/logs/
+.piptmp/

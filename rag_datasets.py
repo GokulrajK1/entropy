@@ -884,3 +884,440 @@ class HotpotQADataset(RAGDataset):
         self.load_queries()
         self.load_passages()
         self.load_answers()
+
+class FinQADataset(RAGDataset):
+    """FinQA financial QA benchmark, sourced from GitHub czyssrs/FinQA raw JSON.
+
+    Each example pairs a question with a bounded financial report excerpt
+    (pre_text + linearized table + post_text) keyed by `filename`; excerpts
+    are shared across ~3 questions on average (2110 unique excerpts / 6251
+    train examples). download() combines train/dev/test (8281 examples total)
+    into one query per example and one passage per unique excerpt, with 1:1
+    query->passage qrels matching how questions were authored against a
+    bounded excerpt.
+    """
+
+    MAX_PASSAGE_WORDS = 400
+
+    SPLIT_URLS = {
+        "train": "https://raw.githubusercontent.com/czyssrs/FinQA/main/dataset/train.json",
+        "dev": "https://raw.githubusercontent.com/czyssrs/FinQA/main/dataset/dev.json",
+        "test": "https://raw.githubusercontent.com/czyssrs/FinQA/main/dataset/test.json",
+    }
+
+    def __init__(self, data_path: str = "DATA/FIN_QA"):
+        super().__init__()
+        self.data_path: str = data_path
+
+    def _cached_paths(self):
+        return {
+            "queries": os.path.join(self.data_path, "queries.tsv"),
+            "passages": os.path.join(self.data_path, "collection.tsv"),
+            "answers": os.path.join(self.data_path, "qrels.tsv"),
+        }
+
+    def _truncate(self, text: str) -> str:
+        words = text.split()
+        if len(words) > self.MAX_PASSAGE_WORDS:
+            words = words[:self.MAX_PASSAGE_WORDS]
+        return " ".join(words).replace("\t", " ").strip()
+
+    def _linearize_table(self, table) -> str:
+        rows = []
+        for row in table or []:
+            cells = [str(cell).strip() for cell in row if str(cell).strip()]
+            if cells:
+                rows.append(", ".join(cells))
+        return " ; ".join(rows)
+
+    def download(self):
+        os.makedirs(self.data_path, exist_ok=True)
+
+        cached = self._cached_paths()
+        if all(os.path.exists(p) and os.path.getsize(p) > 0 for p in cached.values()):
+            return
+
+        import urllib.request
+
+        passages_by_id = {}
+        query_rows = []
+        qrel_rows = []
+
+        for split, url in self.SPLIT_URLS.items():
+            with urllib.request.urlopen(url) as response:
+                examples = json.loads(response.read().decode("utf-8"))
+
+            for example in examples:
+                context_id = example["filename"]
+                if context_id not in passages_by_id:
+                    pre = " ".join(example.get("pre_text", []))
+                    post = " ".join(example.get("post_text", []))
+                    table_text = self._linearize_table(example.get("table", []))
+                    full_text = f"{pre} {table_text} {post}".strip()
+                    passages_by_id[context_id] = self._truncate(full_text)
+
+                qa = example.get("qa")
+                if not qa or not qa.get("question"):
+                    continue
+
+                qid = f"{split}_{example['id']}"
+                question_text = qa["question"].replace("\t", " ").strip()
+                query_rows.append((qid, question_text))
+                qrel_rows.append((qid, context_id))
+
+        with open(cached["passages"], "w", encoding="utf-8") as f:
+            for pid, text in passages_by_id.items():
+                f.write(f"{pid}\t{text}\n")
+
+        with open(cached["queries"], "w", encoding="utf-8") as f:
+            for qid, text in query_rows:
+                f.write(f"{qid}\t{text}\n")
+
+        with open(cached["answers"], "w", encoding="utf-8") as f:
+            for qid, pid in qrel_rows:
+                f.write(f"{qid}\t0\t{pid}\t1\n")
+
+        print(f"Built FinQA cache: {len(query_rows)} queries, {len(passages_by_id)} passages, {len(qrel_rows)} qrels")
+
+    def load_queries(self) -> dict[str, Query]:
+        path = self._cached_paths()["queries"]
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Queries file not found at {path}. Run download() first.")
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                qid, text = line.rstrip("\n").split("\t", 1)
+                self.queries[qid] = Query(qid, text)
+        return self.queries
+
+    def load_passages(self) -> dict[str, Passage]:
+        path = self._cached_paths()["passages"]
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Passages file not found at {path}. Run download() first.")
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                pid, text = line.rstrip("\n").split("\t", 1)
+                self.passages[pid] = Passage(pid, text)
+        return self.passages
+
+    def load_answers(self) -> dict[str, Answer]:
+        path = self._cached_paths()["answers"]
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Qrels file not found at {path}. Run download() first.")
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                qid, _, pid, rel = line.rstrip("\n").split("\t")
+                if int(rel) > 0:
+                    if qid not in self.answers:
+                        self.answers[qid] = Answer(relevant_passage_ids={pid})
+                    else:
+                        self.answers[qid].relevant_passage_ids.add(pid)
+        return self.answers
+
+    def load_all(self):
+        self.download()
+        self.load_queries()
+        self.load_passages()
+        self.load_answers()
+
+
+class PubMedQADataset(RAGDataset):
+    """PubMedQA biomedical QA benchmark, sourced from HuggingFace qiaojin/PubMedQA.
+
+    Each example pairs a research question with the PubMed abstract it was
+    written against (identified by pubid) -- a natural 1:1 qrel, no chunking
+    needed since the abstract itself is the passage. download() combines the
+    PQA-labeled (1000, human-annotated) and PQA-unlabeled (~61200, naturally
+    authored but unlabeled) splits by default for max query variation;
+    PQA-artificial (211K, template-generated from titles) is available via
+    include_artificial=True but off by default since its query naturalness
+    is weaker.
+    """
+
+    MAX_PASSAGE_WORDS = 400
+
+    CONFIGS = {
+        "labeled": "pqa_labeled",
+        "unlabeled": "pqa_unlabeled",
+        "artificial": "pqa_artificial",
+    }
+
+    def __init__(self, data_path: str = "DATA/PUBMED_QA", include_artificial: bool = False):
+        super().__init__()
+        self.data_path: str = data_path
+        self.include_artificial: bool = include_artificial
+
+    def _cached_paths(self):
+        return {
+            "queries": os.path.join(self.data_path, "queries.tsv"),
+            "passages": os.path.join(self.data_path, "collection.tsv"),
+            "answers": os.path.join(self.data_path, "qrels.tsv"),
+        }
+
+    def _truncate(self, text: str) -> str:
+        words = text.split()
+        if len(words) > self.MAX_PASSAGE_WORDS:
+            words = words[:self.MAX_PASSAGE_WORDS]
+        return " ".join(words).replace("\t", " ").strip()
+
+    def download(self):
+        os.makedirs(self.data_path, exist_ok=True)
+
+        cached = self._cached_paths()
+        if all(os.path.exists(p) and os.path.getsize(p) > 0 for p in cached.values()):
+            return
+
+        import importlib
+        hf_datasets = importlib.import_module("datasets")
+        load_dataset = hf_datasets.load_dataset
+
+        configs = ["labeled", "unlabeled"]
+        if self.include_artificial:
+            configs.append("artificial")
+
+        passages_by_id = {}
+        queries_by_id = {}
+
+        for config_key in configs:
+            split = load_dataset("qiaojin/PubMedQA", self.CONFIGS[config_key], split="train")
+            for example in split:
+                pubid = str(example["pubid"])
+                question_text = (example.get("question") or "").replace("\t", " ").strip()
+                if not question_text:
+                    continue
+
+                if pubid not in passages_by_id:
+                    contexts = (example.get("context") or {}).get("contexts") or []
+                    abstract_text = self._truncate(" ".join(contexts))
+                    if not abstract_text:
+                        continue
+                    passages_by_id[pubid] = abstract_text
+
+                queries_by_id[pubid] = question_text
+
+        with open(cached["passages"], "w", encoding="utf-8") as f:
+            for pid, text in passages_by_id.items():
+                f.write(f"{pid}\t{text}\n")
+
+        with open(cached["queries"], "w", encoding="utf-8") as f:
+            for qid, text in queries_by_id.items():
+                f.write(f"{qid}\t{text}\n")
+
+        qrel_count = 0
+        with open(cached["answers"], "w", encoding="utf-8") as f:
+            for qid in queries_by_id:
+                if qid in passages_by_id:
+                    f.write(f"{qid}\t0\t{qid}\t1\n")
+                    qrel_count += 1
+
+        print(f"Built PubMedQA cache: {len(queries_by_id)} queries, {len(passages_by_id)} passages, {qrel_count} qrels")
+
+    def load_queries(self) -> dict[str, Query]:
+        path = self._cached_paths()["queries"]
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Queries file not found at {path}. Run download() first.")
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                qid, text = line.rstrip("\n").split("\t", 1)
+                self.queries[qid] = Query(qid, text)
+        return self.queries
+
+    def load_passages(self) -> dict[str, Passage]:
+        path = self._cached_paths()["passages"]
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Passages file not found at {path}. Run download() first.")
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                pid, text = line.rstrip("\n").split("\t", 1)
+                self.passages[pid] = Passage(pid, text)
+        return self.passages
+
+    def load_answers(self) -> dict[str, Answer]:
+        path = self._cached_paths()["answers"]
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Qrels file not found at {path}. Run download() first.")
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                qid, _, pid, rel = line.rstrip("\n").split("\t")
+                if int(rel) > 0:
+                    if qid not in self.answers:
+                        self.answers[qid] = Answer(relevant_passage_ids={pid})
+                    else:
+                        self.answers[qid].relevant_passage_ids.add(pid)
+        return self.answers
+
+    def load_all(self):
+        self.download()
+        self.load_queries()
+        self.load_passages()
+        self.load_answers()
+
+
+class QasperDataset(RAGDataset):
+    """Qasper NLP-paper QA benchmark, sourced from HuggingFace allenai/qasper.
+
+    Loads via revision="refs/convert/parquet" since the dataset repo ships a
+    loading script that recent `datasets` versions reject for direct use.
+    Each paper's full_text is already segmented into paragraphs -- the
+    natural passage unit here. Each question's answers list evidence strings
+    (verbatim paragraph text, or "FLOAT SELECTED" placeholders for
+    table/figure evidence which are filtered out); download() exact-matches
+    each evidence string back to its paragraph to build genuine
+    paragraph-level qrels. Unanswerable questions and questions whose
+    evidence doesn't match any paragraph are dropped. Passages are all
+    paragraphs from papers that retain at least one usable question (not
+    just the cited ones).
+    """
+
+    MAX_PASSAGE_TOKENS = 1000  # margin below GPT-2's 1024-position limit
+    SPLITS = ["train", "validation", "test"]
+
+    _tokenizer = None
+
+    def __init__(self, data_path: str = "DATA/QASPER"):
+        super().__init__()
+        self.data_path: str = data_path
+
+    def _cached_paths(self):
+        return {
+            "queries": os.path.join(self.data_path, "queries.tsv"),
+            "passages": os.path.join(self.data_path, "collection.tsv"),
+            "answers": os.path.join(self.data_path, "qrels.tsv"),
+        }
+
+    @classmethod
+    def _get_tokenizer(cls):
+        if cls._tokenizer is None:
+            from transformers import GPT2TokenizerFast
+            cls._tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
+        return cls._tokenizer
+
+    def _truncate(self, text: str) -> str:
+        # Word-count truncation isn't safe here: Qasper's technical/scientific
+        # text (citations, LaTeX-like notation, dense terminology) has a much
+        # higher word-to-token ratio than general prose, so a 400-word cap can
+        # still exceed GPT-2's 1024-token position limit and crash entropy scoring.
+        text = " ".join(text.split())  # normalize all whitespace (incl. embedded newlines/tabs) to single spaces
+        token_ids = self._get_tokenizer().encode(text)
+        if len(token_ids) > self.MAX_PASSAGE_TOKENS:
+            text = self._get_tokenizer().decode(token_ids[: self.MAX_PASSAGE_TOKENS])
+        return text.strip()
+
+    def download(self):
+        os.makedirs(self.data_path, exist_ok=True)
+
+        cached = self._cached_paths()
+        if all(os.path.exists(p) and os.path.getsize(p) > 0 for p in cached.values()):
+            return
+
+        import importlib
+        hf_datasets = importlib.import_module("datasets")
+        load_dataset = hf_datasets.load_dataset
+
+        passage_rows = []
+        query_rows = []
+        qrel_rows = []
+        papers_used = 0
+
+        for split in self.SPLITS:
+            dataset_split = load_dataset("allenai/qasper", revision="refs/convert/parquet", split=split)
+            for paper in dataset_split:
+                paper_id = paper["id"]
+                full_text = paper["full_text"]
+                paragraph_id_by_text = {}
+                paper_passages = []
+                for section_idx, section_paragraphs in enumerate(full_text["paragraphs"]):
+                    for para_idx, paragraph_text in enumerate(section_paragraphs):
+                        if not paragraph_text or not paragraph_text.strip():
+                            continue
+                        pid = f"{paper_id}_s{section_idx}_p{para_idx}"
+                        paragraph_id_by_text.setdefault(paragraph_text, pid)
+                        paper_passages.append((pid, self._truncate(paragraph_text)))
+
+                qas = paper["qas"]
+                paper_qrels = []
+                paper_queries = []
+                for i, question_id in enumerate(qas["question_id"]):
+                    question_text = (qas["question"][i] or "").replace("\t", " ").strip()
+                    if not question_text:
+                        continue
+
+                    answer_entries = qas["answers"][i]["answer"]
+                    relevant_pids = set()
+                    for answer in answer_entries:
+                        if answer.get("unanswerable"):
+                            continue
+                        for evidence_text in answer.get("evidence") or []:
+                            if "FLOAT SELECTED" in evidence_text:
+                                continue
+                            pid = paragraph_id_by_text.get(evidence_text)
+                            if pid is not None:
+                                relevant_pids.add(pid)
+
+                    if not relevant_pids:
+                        continue
+
+                    paper_queries.append((question_id, question_text))
+                    for pid in relevant_pids:
+                        paper_qrels.append((question_id, pid))
+
+                if not paper_queries:
+                    continue
+
+                papers_used += 1
+                passage_rows.extend(paper_passages)
+                query_rows.extend(paper_queries)
+                qrel_rows.extend(paper_qrels)
+
+        with open(cached["passages"], "w", encoding="utf-8") as f:
+            for pid, text in passage_rows:
+                f.write(f"{pid}\t{text}\n")
+
+        with open(cached["queries"], "w", encoding="utf-8") as f:
+            for qid, text in query_rows:
+                f.write(f"{qid}\t{text}\n")
+
+        with open(cached["answers"], "w", encoding="utf-8") as f:
+            for qid, pid in qrel_rows:
+                f.write(f"{qid}\t0\t{pid}\t1\n")
+
+        print(f"Built Qasper cache: {papers_used} papers, {len(query_rows)} queries, {len(passage_rows)} passages, {len(qrel_rows)} qrels")
+
+    def load_queries(self) -> dict[str, Query]:
+        path = self._cached_paths()["queries"]
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Queries file not found at {path}. Run download() first.")
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                qid, text = line.rstrip("\n").split("\t", 1)
+                self.queries[qid] = Query(qid, text)
+        return self.queries
+
+    def load_passages(self) -> dict[str, Passage]:
+        path = self._cached_paths()["passages"]
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Passages file not found at {path}. Run download() first.")
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                pid, text = line.rstrip("\n").split("\t", 1)
+                self.passages[pid] = Passage(pid, text)
+        return self.passages
+
+    def load_answers(self) -> dict[str, Answer]:
+        path = self._cached_paths()["answers"]
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Qrels file not found at {path}. Run download() first.")
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                qid, _, pid, rel = line.rstrip("\n").split("\t")
+                if int(rel) > 0:
+                    if qid not in self.answers:
+                        self.answers[qid] = Answer(relevant_passage_ids={pid})
+                    else:
+                        self.answers[qid].relevant_passage_ids.add(pid)
+        return self.answers
+
+    def load_all(self):
+        self.download()
+        self.load_queries()
+        self.load_passages()
+        self.load_answers()

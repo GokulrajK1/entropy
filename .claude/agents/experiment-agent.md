@@ -120,6 +120,51 @@ Notes:
 
 ---
 
+## Environment: Rutgers CS iLab machine
+
+This project runs on a Rutgers CS Linux machine (`ilab*.cs.rutgers.edu` / `rlab*.cs.rutgers.edu`), a shared, multi-user system with enforced resource limits — see https://resources.cs.rutgers.edu/docs/limitation-enforced-on-cs-linux-machines/. Key limits on processes run directly on the login node (plain background `&`/`nohup`, no scheduler):
+
+- **CPU time**: 24 CPU-hours by default (wall-clock ÷ core count — e.g. 4 cores hits the cap after 6 hours of wall time), tracked per user across all direct processes.
+- **Memory**: 80GB per user on `ilab*` hosts.
+- The oomkiller / session reaper will silently kill processes that exceed these — a build that "disappears" with no error is almost always this, not a code bug.
+
+**Rule: any job expected to run more than a few minutes, or that needs a GPU, must be submitted via Slurm (`sbatch`/`srun`), never as a raw background process on the login shell.** Slurm jobs are exempt from the login-node CPU/memory caps (max job duration 7 days). Full scheduler docs: https://resources.cs.rutgers.edu/docs/scheduler-for-gpu-jobs/.
+
+This includes, at minimum: Step 7 onboarding builds (`build_artifacts()` over more than a trivial passage/query count), any `--refresh_entropy`/`--refresh_vectordb`, and any real (non-smoke-test) experiment run.
+
+Use the repo's `slurm/run_job.sbatch` wrapper (activates `venv/`, `cd`s to `$SLURM_SUBMIT_DIR`, then execs whatever command is passed):
+
+```bash
+# submit — request 1 GPU (max 4/job); give it a descriptive --job-name
+sbatch --job-name=<dataset>-build slurm/run_job.sbatch python3 experiment_runner.py \
+    --run --dataset <key> --experiment simple_reordering --number_of_queries 1
+
+# monitor
+squeue -u $USER
+tail -f slurm/logs/<job-name>-<jobid>.out
+
+# cancel
+scancel <jobid>
+```
+
+Notes:
+- Output goes to `slurm/logs/<job-name>-<jobid>.out` (gitignored — logs stay local). `run_job.sbatch` sets `PYTHONUNBUFFERED=1` so `print()` progress lines show up promptly instead of sitting in Python's stdout block-buffer until it fills or the process exits.
+- Don't hand-pick a GPU via `CUDA_VISIBLE_DEVICES` by eyeballing `nvidia-smi` — request GPUs through `-G` (default in `run_job.sbatch`) and let Slurm allocate; picking a device manually can collide with another user's job.
+- Because these jobs run detached from the launching shell, poll with `squeue`/log tail rather than blocking Bash `sleep`, and use a scheduled wakeup for anything that will take longer than a few minutes.
+- A trivial/short check (e.g. `python -c "import ast; ..."`, reading a pickle to check `len()`) does not need Slurm — only compute-bound builds/runs do.
+
+---
+
+## Git workflow: compute here, view/share on the user's Mac
+
+The user's workflow is to do all data onboarding, entropy-store, and FAISS-index compute on this iLab machine, then `git push` only the lightweight **results** back so they can `git pull` on their Mac to view/share — the Mac never needs `venv`/torch/faiss/ir_datasets installed.
+
+- `DATA/` is gitignored (raw corpora + `*.pkl` caches — entropy stores, FAISS indices) and **must stay local to this machine only**. These are large, machine/GPU-specific compute artifacts, not shareable results.
+- `experiments/<name>/results/<timestamp>/` (the `result.json`, plots, CSVs written by `save_results`) **is tracked in git** — this is the actual deliverable the user views on their Mac.
+- After a real experiment run completes successfully, tell the user the new `results/<timestamp>/` path and that it's ready to commit/push — but per the existing rule below, don't `git add`/`commit`/`push` unless they explicitly ask.
+
+---
+
 ## SKILL: onboarding
 
 Invoke this skill when the user asks to **onboard**, **add**, or **integrate** a new dataset.
@@ -144,16 +189,14 @@ Use web search and/or the HuggingFace datasets hub to answer:
 
 The Step 7 dummy run (`--number_of_queries 1`) only verifies the pipeline produces `faiss_index.pkl`/`entropy_store.pkl`/`query_entropy_store.pkl` without errors. It is **not** the real dataset size, and must not be confused with it.
 
-The actual size of the dataset is determined by how many queries/passages `download()` writes to the cache files. For a real experiment to produce non-noisy MRR/recall numbers:
-- Target **at least ~500 queries with qrels** by default (scale down only if the source dataset genuinely has fewer — e.g. don't pad past what's available).
-- For comparison, existing datasets are: `RAGBenchCovidQA` (1252 queries / 3735 passages), `MSMACRO` (~7000 queries). A handful of queries (as in an earlier NQ onboarding attempt that used `max_examples=15`, yielding only 10 scored queries) is not a usable experiment size.
-- Expose the size as constructor params with sensible defaults (e.g. `num_queries`, `target_passage_pool`) rather than hardcoding — see `NaturalQuestionsDataset` for the pattern.
+The actual size of the dataset is determined by how many queries/passages `download()` writes to the cache files. **Default to as large as the source dataset genuinely supports** — the user's explicit preference is maximum query/passage variation, not a minimal-viable sample. `num_queries=None`/unbounded and a full or near-full passage pool is the right default; only shrink below the source's natural size if the estimated build time (see below) is impractical even on Slurm, and if so say so and propose a concrete smaller number rather than silently capping it.
+- Floor: **at least ~500 queries with qrels** if the source is large enough to support far more — never go below this for statistical validity of MRR/recall.
+- For comparison, existing datasets: `RAGBenchCovidQA` (1252 queries / 3735 passages), `MSMACRO` (~7000 queries), `HotpotQA` (85,000 queries / 500,000 passages, GPU+Slurm build).
+- Expose the size as constructor params with sensible (large) defaults (e.g. `num_queries`, `target_passage_pool`) rather than hardcoding — see `NaturalQuestionsDataset`/`HotpotQADataset` for the pattern.
 
-`num_queries` and `target_passage_pool` are independent knobs — don't scale them together by a fixed ratio:
-- `num_queries` (≥500) drives statistical validity of MRR/recall.
-- `target_passage_pool` drives `build_artifacts()` compute cost: on CPU, GPT-2 entropy is roughly ~0.1s/item (e.g. ~7 min for 5000 passages at the 400-word truncation limit, much less for short queries), and FAISS embedding adds more on top. Size the pool to roughly 3-5x the qrels-positive count (a few thousand is usually plenty) rather than a large flat multiple of `num_queries` — it can always be bumped later via the constructor default.
+`num_queries` and `target_passage_pool` are independent knobs — don't scale them together by a fixed ratio. Both should be pushed as high as the source data and build time allow.
 
-Before kicking off a fresh/large `build_artifacts()` rebuild, state the expected build time (passage count × ~0.1s for `create_entropy_store()`, plus query count × ~0.1s for `create_query_entropy_store()`) so wait/poll intervals can be sized once instead of guessed repeatedly.
+**Estimating build time**: `create_entropy_store()`/`create_query_entropy_store()` run GPT-2 forward passes one item at a time (no batching). Measured throughput: ~0.1s/item on CPU, ~19ms/item on a GPU (RTX A4500) — always run these on Slurm with a GPU (see "Environment: Rutgers CS iLab machine"), not on the CPU-only login node. Before kicking off a fresh/large `build_artifacts()` rebuild, state the expected build time (`(passage_count + query_count) × ~19ms` on GPU) so the user can sanity-check the size choice and wait/poll intervals can be sized once instead of guessed repeatedly.
 
 **Step 2 — Choose an access strategy**
 
@@ -197,7 +240,8 @@ Rules:
 - `load_all()` must call all four methods in order.
 - Strip tabs from text fields (replace `\t` with space) to avoid breaking TSV formats.
 - All passage and query IDs must be strings.
-- Truncate passage text to roughly the first 400 words. `AutoregressiveEntropyCalculator` runs GPT-2 (1024-token limit) over every passage; an over-length passage crashes `create_entropy_store()` with `IndexError: index out of range in self`.
+- Truncate passage text to roughly the first 400 words. `AutoregressiveEntropyCalculator` runs GPT-2 (1024-token limit) over every passage; an over-length passage crashes `create_entropy_store()`/`create_query_entropy_store()` (`IndexError: index out of range in self` on CPU, `CUDA error: device-side assert triggered` on GPU).
+  - **Word count is only a safe proxy for token count on general prose.** Domains with dense/technical vocabulary (scientific papers, code, chemical/legal terminology, LaTeX-like notation) can have a word→token ratio well above the ~1.3x typical of plain English — confirmed on Qasper, where a 400-word paragraph tokenized to 1033 GPT-2 tokens and crashed a live Slurm job partway through. For any dataset with non-general-prose text, truncate by actual token count instead (encode with `GPT2TokenizerFast`, cap around 1000 tokens to leave margin) rather than a word cap — see `QasperDataset._truncate` for the pattern. When in doubt, spot-check a sample of passages' tokenized length locally before submitting the real Slurm build, so a bad truncation assumption doesn't burn GPU time on a job that dies partway through.
 - If replacing an entire existing dataset class (e.g. swapping its data source), a single combined verification step — `python -c "import ast; ast.parse(open('rag_datasets.py').read())"` followed by an import smoke-test of the new class — is sufficient. Don't add further `ls`/`grep`/`Read` confirmation steps on top of that.
 
 **Subsetting large corpora**
@@ -213,7 +257,7 @@ BEIR-style corpora can have millions of docs (e.g. `beir/nq` has 2.68M) — neve
 
 **Monitoring background builds**
 
-`create_entropy_store()` and `create_query_entropy_store()` print progress every 1000 items (`Computed entropy for X/N passages|queries`); `create_faiss_index()` prints every batch. Treat these as the liveness signal for a background `build_artifacts()` run — a CPU-bound GPT-2 pass over a few thousand items can run several minutes between printouts, which is normal. Don't escalate to `ps`/`sample`-style process diagnostics unless progress hasn't advanced for longer than one full expected checkpoint interval.
+`create_entropy_store()` and `create_query_entropy_store()` print progress every 1000 items (`Computed entropy for X/N passages|queries`); `create_faiss_index()` prints every batch. When run via Slurm (the normal case — see "Environment" above), these show up in `slurm/logs/<job-name>-<jobid>.out`; treat new lines there as the liveness signal — a GPU pass over tens of thousands of items can run several minutes between printouts, which is normal. Don't escalate to `squeue`/`ps`-style process diagnostics unless progress hasn't advanced for longer than one full expected checkpoint interval, and prefer a scheduled wakeup over blocking `sleep` while a multi-hour job runs.
 
 **Step 6 — Register the dataset in experiment_runner.py**
 
@@ -230,11 +274,14 @@ BEIR-style corpora can have millions of docs (e.g. `beir/nq` has 2.68M) — neve
 
 **Step 7 — Run a dummy experiment to create the artifacts**
 
-Execute in the terminal (from the workspace root):
+Submit via Slurm (see "Environment: Rutgers CS iLab machine" above) rather than running directly — `download()`/`build_artifacts()` over more than a trivial pool is exactly the kind of job that must not run on the login node:
 
 ```bash
-source venv/bin/activate && python experiment_runner.py --run --dataset <cli_key> --experiment simple_reordering --number_of_queries 1
+sbatch --job-name=<cli_key>-build slurm/run_job.sbatch python3 experiment_runner.py \
+    --run --dataset <cli_key> --experiment simple_reordering --number_of_queries 1
 ```
+
+Then monitor with `squeue -u $USER` and `tail -f slurm/logs/<cli_key>-build-<jobid>.out`.
 
 This will:
 - Call `dataset.load_all()` (which calls `download()` internally) — this is where the *real* dataset size is determined (see "Dataset sizing" above), not the `--number_of_queries 1` flag
@@ -330,7 +377,8 @@ Special names handled generically by `experiment_runner.py` (see "Running the CL
 **Step 7 — Smoke-test**
 
 ```bash
-source venv/bin/activate && python experiment_runner.py --run --dataset <key> --experiment <experiment_name> --number_of_queries 1
+sbatch --job-name=<experiment_name>-smoke slurm/run_job.sbatch python3 experiment_runner.py \
+    --run --dataset <key> --experiment <experiment_name> --number_of_queries 1
 ```
 
 Check that `experiments/<experiment_name>/results/<timestamp>/` is created, containing `result.json` (with `parameters` and `results` keys) plus the expected output files.
@@ -376,8 +424,15 @@ If `DATA/<DATASET_KEY>/` is missing `entropy_store.pkl`, `faiss_index.pkl`, or `
 
 **Step 6 — Run the command**
 
+For a quick/cheap check (small `number_of_queries`, already-cached artifacts) it's fine to run directly. For anything substantial (large `number_of_queries`, or artifacts need building/refreshing), submit via Slurm instead — see "Environment: Rutgers CS iLab machine" above:
+
 ```bash
+# direct (cheap, cached artifacts)
 source venv/bin/activate && python experiment_runner.py --run --dataset <key> --experiment <experiment_name> [--<param> <value> ...]
+
+# via Slurm (large run, or artifacts need building)
+sbatch --job-name=<experiment_name>-run slurm/run_job.sbatch python3 experiment_runner.py \
+    --run --dataset <key> --experiment <experiment_name> [--<param> <value> ...]
 ```
 
 **Step 7 — Report results**

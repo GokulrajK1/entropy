@@ -56,7 +56,7 @@ class Experiment(ABC):
     def _start_run(self, experiment_file, parameters):
         """Create experiments/<name>/results/<timestamp>/ and record the run's parameters."""
         experiment_dir = Path(experiment_file).resolve().parent
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S-%f")
         self.output_path = experiment_dir / self.RESULTS_DIRECTORY_NAME / timestamp
         self.output_path.mkdir(parents=True, exist_ok=True)
         self.parameters = self._json_safe(parameters)

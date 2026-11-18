@@ -1,0 +1,223 @@
+{
+  "parameters": {
+    "percentiles": "25,15,5",
+    "alpha_values": "0.0,0.5,1.0,1.5,2.0,3.0",
+    "utility_function": "U3",
+    "number_of_passages_retrieved_per_query": 10
+  },
+  "results": {
+    "tiers": {
+      "top25pct": {
+        "alpha": [
+          0.0,
+          0.5,
+          1.0,
+          1.5,
+          2.0,
+          3.0
+        ],
+        "mean_mrr": [
+          0.7947273192727154,
+          0.7729149774240694,
+          0.7306613722616421,
+          0.6986978170650985,
+          0.6737196433543539,
+          0.6413146667564196
+        ],
+        "std_mrr": [
+          0.35138035285701374,
+          0.3601512492442079,
+          0.37299336442854425,
+          0.38051258387532666,
+          0.38460649648845296,
+          0.38817765220040124
+        ],
+        "median_mrr": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "min_mrr": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "max_mrr": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "queries_with_relevant": [
+          15563,
+          15563,
+          15563,
+          15563,
+          15563,
+          15563
+        ],
+        "queries_evaluated": [
+          15563,
+          15563,
+          15563,
+          15563,
+          15563,
+          15563
+        ],
+        "percent": 25.0,
+        "num_queries": 15563,
+        "csv_file": "/common/home/gk570/Programming/entropy/experiments/entropy_percentile_mrr_sweep/results/2026-07-10_23-38-45/mrr_results_top25pct.csv",
+        "plot_file": "/common/home/gk570/Programming/entropy/experiments/entropy_percentile_mrr_sweep/results/2026-07-10_23-38-45/mrr_vs_alpha_top25pct.png"
+      },
+      "top15pct": {
+        "alpha": [
+          0.0,
+          0.5,
+          1.0,
+          1.5,
+          2.0,
+          3.0
+        ],
+        "mean_mrr": [
+          0.7782753181232512,
+          0.758497961903402,
+          0.7182418994584341,
+          0.6878854790291928,
+          0.6656848021567447,
+          0.6351003069893625
+        ],
+        "std_mrr": [
+          0.3625433715958406,
+          0.36997737938523156,
+          0.38045950916539606,
+          0.3864110280266675,
+          0.3899577865243944,
+          0.39225224521237323
+        ],
+        "median_mrr": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "min_mrr": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "max_mrr": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "queries_with_relevant": [
+          9338,
+          9338,
+          9338,
+          9338,
+          9338,
+          9338
+        ],
+        "queries_evaluated": [
+          9338,
+          9338,
+          9338,
+          9338,
+          9338,
+          9338
+        ],
+        "percent": 15.0,
+        "num_queries": 9338,
+        "csv_file": "/common/home/gk570/Programming/entropy/experiments/entropy_percentile_mrr_sweep/results/2026-07-10_23-38-45/mrr_results_top15pct.csv",
+        "plot_file": "/common/home/gk570/Programming/entropy/experiments/entropy_percentile_mrr_sweep/results/2026-07-10_23-38-45/mrr_vs_alpha_top15pct.png"
+      },
+      "top5pct": {
+        "alpha": [
+          0.0,
+          0.5,
+          1.0,
+          1.5,
+          2.0,
+          3.0
+        ],
+        "mean_mrr": [
+          0.7457383017453688,
+          0.7298382614637032,
+          0.6958740611567467,
+          0.671740116969799,
+          0.6519156736471223,
+          0.6239067861859382
+        ],
+        "std_mrr": [
+          0.38197300233402265,
+          0.3866205211857269,
+          0.39383100084573286,
+          0.39805529347259205,
+          0.4002547088601737,
+          0.40070707296666297
+        ],
+        "median_mrr": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "min_mrr": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "max_mrr": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "queries_with_relevant": [
+          3113,
+          3113,
+          3113,
+          3113,
+          3113,
+          3113
+        ],
+        "queries_evaluated": [
+          3113,
+          3113,
+          3113,
+          3113,
+          3113,
+          3113
+        ],
+        "percent": 5.0,
+        "num_queries": 3113,
+        "csv_file": "/common/home/gk570/Programming/entropy/experiments/entropy_percentile_mrr_sweep/results/2026-07-10_23-38-45/mrr_results_top5pct.csv",
+        "plot_file": "/common/home/gk570/Programming/entropy/experiments/entropy_percentile_mrr_sweep/results/2026-07-10_23-38-45/mrr_vs_alpha_top5pct.png"
+      }
+    },
+    "comparison_plot_file": "/common/home/gk570/Programming/entropy/experiments/entropy_percentile_mrr_sweep/results/2026-07-10_23-38-45/mrr_vs_alpha_comparison.png"
+  }
+}

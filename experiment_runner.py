@@ -17,9 +17,10 @@ EXPERIMENT_CHOICES = [
     "entropy_threshold_alpha_sweep",
     "entropy_threshold_top_passage_mrr",
     "ragbench_mrr_eval",
+    "entropy_percentile_mrr_sweep",
 ]
 
-DATASET_CHOICES = ["msmacro", "ragbench_covidqa", "natural_questions", "hotpotqa"]
+DATASET_CHOICES = ["msmacro", "ragbench_covidqa", "natural_questions", "hotpotqa", "fin_qa", "pubmed_qa", "qasper"]
 ENTROPY_CALCULATOR_CHOICES = ["gpt2"]
 EMBEDDER_CHOICES = ["all-MiniLM-L6-v2"]
 TOKEN_COUNTER_CHOICES = ["tiktoken"]
@@ -125,6 +126,7 @@ def _load_runtime_dependencies():
         DifficultyAlphaSweepExperiment,
         DifficultyMRRComparisonExperiment,
         DifficultyRankingComplicatedAlphaSweepExperiment,
+        EntropyPercentileMRRSweepExperiment,
         EntropyThresholdAlphaSweepExperiment,
         EntropyThresholdTopPassageMRRExperiment,
         QueryEntropyDifficultyMRRExperiment,
@@ -136,13 +138,16 @@ def _load_runtime_dependencies():
         SimpleReorderingExperiment,
     )
     from rag import AutoregressiveEntropyCalculator, EntropyRAG, embed_texts, count_tokens_tiktoken, UtilityFunction
-    from rag_datasets import MSMACRODataset, NaturalQuestionsDataset, RAGBenchCovidQADataset, HotpotQADataset
+    from rag_datasets import MSMACRODataset, NaturalQuestionsDataset, RAGBenchCovidQADataset, HotpotQADataset, FinQADataset, PubMedQADataset, QasperDataset
 
     dataset_map = {
         "msmacro": MSMACRODataset,
         "ragbench_covidqa": RAGBenchCovidQADataset,
         "natural_questions": NaturalQuestionsDataset,
         "hotpotqa": HotpotQADataset,
+        "fin_qa": FinQADataset,
+        "pubmed_qa": PubMedQADataset,
+        "qasper": QasperDataset,
     }
 
     entropy_calc_map = {
@@ -177,6 +182,7 @@ def _load_runtime_dependencies():
         "entropy_threshold_alpha_sweep": EntropyThresholdAlphaSweepExperiment,
         "entropy_threshold_top_passage_mrr": EntropyThresholdTopPassageMRRExperiment,
         "ragbench_mrr_eval": RAGBenchMRREvaluationExperiment,
+        "entropy_percentile_mrr_sweep": EntropyPercentileMRRSweepExperiment,
     }
 
     return {
